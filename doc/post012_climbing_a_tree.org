@@ -1,0 +1,53 @@
+#+ORG2BLOG:
+#+DATE: [2024-03-18 lun 22:19]
+#+OPTIONS: toc:nil num:nil todo:nil pri:nil tags:nil ^:nil
+#+CATEGORY: Org2Blog, WordPress
+#+TAGS: Emacs, Lisp
+#+DESCRIPTION:
+#+TITLE: Climbing a (binary) Tree
+* Iterable and iterators
+* The state machine and the stack
+
+#+begin_src dot :file images/post012_climbing_state.png
+digraph {
+    subgraph {
+        start [label = "start", shape="oval"];
+        running [label = "running", shape="box"];
+        suspended [label = "suspended", shape="box"];
+        stop [label = "stop", shape="oval"];
+        start -> running [label = "next"]
+        running -> suspended [label = "yield"]
+        suspended -> running [label = "next"]
+        running -> stop [label = "yield end"]
+        {rank = same; running; suspended;}
+    }
+}
+#+end_src
+
+#+RESULTS:
+[[file:images/post012_climbing_state.png]]
+
+1. each time I enter a node
+   - I check the left node exists
+   - if exists i push a LEFT in the stack and I enter left node (go back to 1)
+2. I yield my value
+3. I check the right node exists
+   - if it exists I push a RIGHT to the stack I enter right node (go back to 1)
+4. if the stack is not empty pop the stack and exit the node
+   - otherwise yield the end of the stream
+
+Each yield require a state save so when the next method is called it can be resumed
+* The smallest stack
+
+| stack operation | binary operation     | before | after | phase          |
+|-----------------+----------------------+--------+-------+----------------|
+|                 |                      | 0b0    | 0b1   | init           |
+|-----------------+----------------------+--------+-------+----------------|
+| push LEFT       | shift left           | 0b1    | 0b10  | process node B |
+| pop             | shift right          | 0b10   | 0b1   | back to node A |
+|-----------------+----------------------+--------+-------+----------------|
+| push RIGHT      | shift left and add 1 | 0b1    | 0b11  |                |
+| pop             | shift right          | 0b11   | 0b1   |                |
+|-----------------+----------------------+--------+-------+----------------|
+| pop             | shift right          | 0b1    | 0b0   |                |
+* Into Iter
