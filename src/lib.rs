@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 #[derive(Debug)]
 pub struct Node<T>{
     value : T,
@@ -70,55 +72,88 @@ impl<T : Ord> Tree<T>{
     }
 }
 
-enum TreeIterStatus{
-    ReturnedValue,
-    Enter,
-    ExitLeft,
-    ExitRight
+#[derive(Debug, Copy, Clone)]
+enum NodeStatus{
+    A,
+    B,
+    C,
+    D
 }
 
-struct TreeIter<'a, T>{
-    tree : & 'a Tree<T>,
-    stack : Vec<& 'a Node<T>>,
+struct TreeIter<'a, T: Debug> {
+    stack : Vec<(NodeStatus, & 'a Node<T>)>
 }
 
-impl<'a, T> TreeIter<'a, T>{
+impl<'a, T : Debug> TreeIter<'a, T>{
     fn new(tree : & 'a mut  Tree<T>) -> TreeIter<'a, T>{
-        TreeIter{
-            tree : tree,
-            stack : Vec::new()
-        }
-    }
-    fn next_item(& mut self) -> Option<& 'a T>{
-        if self.stack.is_empty(){
-            match self.tree.root {
-                None => { return None; }
-                Some(ref node) => {
-                    self.stack.push(node);
+        match tree.root {
+            None => {
+                TreeIter{
+                    stack : Vec::new()
+                }
+            }
+            Some(ref node) => {
+                TreeIter{
+                    stack: vec![(NodeStatus::A, & node)]
                 }
             }
         }
-        while let Some(node) = self.stack.pop(){
-            self.stack.push(node);
-            match & node.left {
-                None => {
-                    return Some(& node.value)
-                }
-                Some(n) => {
-                    self.stack.push(& n)
-                }
+    }
+    fn next_item(& mut self) -> Option<& 'a T>{
+        while let Some((address,node)) = self.stack.pop(){
+            println!("entering {:?} :: {:?} :: stack {}",address,node.value, self.stack.len());
+            match address {
+                NodeStatus::A => {
+                    match node.left{
+                        None => {
+                            self.stack.push((NodeStatus::B, node));
+                        },
+                        Some(ref left) => {
+                            self.stack.push((NodeStatus::B, node));
+                            self.stack.push((NodeStatus::A, left));
+                            println!("A adding {:?} :: {:?} :: stack {}","A",left.value, self.stack.len());
+                        }
+                    }
+                },
+                NodeStatus::B => {
+                    self.stack.push((NodeStatus::C, node));
+                    return Some(& node.value);
+                },
+                NodeStatus::C => {
+                    match node.right{
+                        None => {
+                            self.stack.push((NodeStatus::D, node));
+                        },
+                        Some(ref right) => {
+                            self.stack.push((NodeStatus::D, node));
+                            self.stack.push((NodeStatus::A, right));
+                            println!("C adding {:?} :: {:?} :: stack {}","A",right.value, self.stack.len());
+                        }
+                    }
+                },
+                NodeStatus::D => {
+                    println!("D exiting :: {:?} :: stack {}",node.value, self.stack.len());
+                },
             }
         }
         None
     }
 }
 
-impl<'a, T> Iterator for TreeIter<'a, T>{
+impl<'a, T : Debug> Iterator for TreeIter<'a, T>{
     type Item = & 'a T;
     fn next(&mut self) -> Option<Self::Item> {
         self.next_item()
     }
 }
+
+// impl<'a, T> IntoIterator for Tree<T>{
+//     type Item = & 'a T;
+//     type IntoIter = TreeIter<'a , T>;
+//     fn into_iter(mut self) -> Self::IntoIter {
+//         TreeIter::new(& mut self)
+//     }
+// }
 
 pub struct Stack1 {
     stack: usize
@@ -172,9 +207,9 @@ mod tests {
         tree.insert(5);
         println!("{:?}",tree);
         let mut tree_iter = TreeIter::new(& mut tree);
-        for i in [1..6]{
-            println!("{:?}",tree_iter.next())
+        for i in 1..12{
+            println!("{} ==> {:?}",i,tree_iter.next())
         }
-        assert_eq!(1,1);
+        assert_eq!(0,1);
     }
 }
