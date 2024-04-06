@@ -10,7 +10,7 @@ pub struct Node<T>{
 impl<T> Node<T>{
     fn new(value : T) -> Node<T>{
         Node{
-            value : value,
+            value,
             left : None,
             right : None
         }
@@ -74,18 +74,18 @@ impl<T : Ord> Tree<T>{
 
 #[derive(Debug, Copy, Clone)]
 enum NodeStatus{
-    A,
-    B,
-    C,
-    D
+    Enter,
+    LeftCompleted,
+    ValueYield,
+    Completed
 }
 
-struct TreeIter<'a, T: Debug> {
+pub struct TreeIter<'a, T> {
     stack : Vec<(NodeStatus, & 'a Node<T>)>
 }
 
-impl<'a, T : Debug> TreeIter<'a, T>{
-    fn new(tree : & 'a mut  Tree<T>) -> TreeIter<'a, T>{
+impl<'a, T> TreeIter<'a, T>{
+    fn new(tree : & 'a Tree<T>) -> TreeIter<'a, T>{
         match tree.root {
             None => {
                 TreeIter{
@@ -94,45 +94,41 @@ impl<'a, T : Debug> TreeIter<'a, T>{
             }
             Some(ref node) => {
                 TreeIter{
-                    stack: vec![(NodeStatus::A, & node)]
+                    stack: vec![(NodeStatus::Enter, & node)]
                 }
             }
         }
     }
     fn next_item(& mut self) -> Option<& 'a T>{
         while let Some((address,node)) = self.stack.pop(){
-            println!("entering {:?} :: {:?} :: stack {}",address,node.value, self.stack.len());
             match address {
-                NodeStatus::A => {
+                NodeStatus::Enter => {
                     match node.left{
                         None => {
-                            self.stack.push((NodeStatus::B, node));
+                            self.stack.push((NodeStatus::LeftCompleted, node));
                         },
                         Some(ref left) => {
-                            self.stack.push((NodeStatus::B, node));
-                            self.stack.push((NodeStatus::A, left));
-                            println!("A adding {:?} :: {:?} :: stack {}","A",left.value, self.stack.len());
+                            self.stack.push((NodeStatus::LeftCompleted, node));
+                            self.stack.push((NodeStatus::Enter, left));
                         }
                     }
                 },
-                NodeStatus::B => {
-                    self.stack.push((NodeStatus::C, node));
+                NodeStatus::LeftCompleted => {
+                    self.stack.push((NodeStatus::ValueYield, node));
                     return Some(& node.value);
                 },
-                NodeStatus::C => {
+                NodeStatus::ValueYield => {
                     match node.right{
                         None => {
-                            self.stack.push((NodeStatus::D, node));
+                            self.stack.push((NodeStatus::Completed, node));
                         },
                         Some(ref right) => {
-                            self.stack.push((NodeStatus::D, node));
-                            self.stack.push((NodeStatus::A, right));
-                            println!("C adding {:?} :: {:?} :: stack {}","A",right.value, self.stack.len());
+                            self.stack.push((NodeStatus::Completed, node));
+                            self.stack.push((NodeStatus::Enter, right));
                         }
                     }
                 },
-                NodeStatus::D => {
-                    println!("D exiting :: {:?} :: stack {}",node.value, self.stack.len());
+                NodeStatus::Completed => {
                 },
             }
         }
@@ -140,20 +136,20 @@ impl<'a, T : Debug> TreeIter<'a, T>{
     }
 }
 
-impl<'a, T : Debug> Iterator for TreeIter<'a, T>{
+impl<'a, T> Iterator for TreeIter<'a, T>{
     type Item = & 'a T;
     fn next(&mut self) -> Option<Self::Item> {
         self.next_item()
     }
 }
 
-// impl<'a, T> IntoIterator for Tree<T>{
-//     type Item = & 'a T;
-//     type IntoIter = TreeIter<'a , T>;
-//     fn into_iter(mut self) -> Self::IntoIter {
-//         TreeIter::new(& mut self)
-//     }
-// }
+impl<'a , T> IntoIterator for & 'a Tree<T>{
+     type Item = & 'a T;
+     type IntoIter = TreeIter<'a, T>;
+     fn into_iter(self) -> Self::IntoIter {
+         TreeIter::new(self)
+     }
+}
 
 pub struct Stack1 {
     stack: usize
@@ -199,17 +195,14 @@ mod tests {
 
     #[test]
     fn create_a_root_node() {
-        let mut tree = Tree::new();
+        let mut tree : Tree<i64>= Tree::new();
         tree.insert(8);
         tree.insert(10);
         tree.insert(4);
         tree.insert(6);
         tree.insert(5);
         println!("{:?}",tree);
-        let mut tree_iter = TreeIter::new(& mut tree);
-        for i in 1..12{
-            println!("{} ==> {:?}",i,tree_iter.next())
-        }
-        assert_eq!(0,1);
+        let result : Vec<i64> = tree.into_iter().map(|x| (*x).clone()).collect();
+        assert_eq!(result,vec![4,5,6,8,10]);
     }
 }
