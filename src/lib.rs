@@ -73,7 +73,7 @@ impl<T : Ord> Tree<T>{
 }
 
 #[derive(Debug, Copy, Clone)]
-enum NodeStatus{
+enum Address{
     Enter,
     LeftCompleted,
     ValueYield,
@@ -81,7 +81,7 @@ enum NodeStatus{
 }
 
 pub struct TreeIter<'a, T> {
-    stack : Vec<(NodeStatus, & 'a Node<T>)>
+    stack : Vec<(Address, & 'a Node<T>)>
 }
 
 impl<'a, T> TreeIter<'a, T>{
@@ -94,7 +94,7 @@ impl<'a, T> TreeIter<'a, T>{
             }
             Some(ref node) => {
                 TreeIter{
-                    stack: vec![(NodeStatus::Enter, & node)]
+                    stack: vec![(Address::Enter, & node)]
                 }
             }
         }
@@ -102,33 +102,33 @@ impl<'a, T> TreeIter<'a, T>{
     fn next_item(& mut self) -> Option<& 'a T>{
         while let Some((address,node)) = self.stack.pop(){
             match address {
-                NodeStatus::Enter => {
+                Address::Enter => {
                     match node.left{
                         None => {
-                            self.stack.push((NodeStatus::LeftCompleted, node));
+                            self.stack.push((Address::LeftCompleted, node));
                         },
                         Some(ref left) => {
-                            self.stack.push((NodeStatus::LeftCompleted, node));
-                            self.stack.push((NodeStatus::Enter, left));
+                            self.stack.push((Address::LeftCompleted, node));
+                            self.stack.push((Address::Enter, left));
                         }
                     }
                 },
-                NodeStatus::LeftCompleted => {
-                    self.stack.push((NodeStatus::ValueYield, node));
+                Address::LeftCompleted => {
+                    self.stack.push((Address::ValueYield, node));
                     return Some(& node.value);
                 },
-                NodeStatus::ValueYield => {
+                Address::ValueYield => {
                     match node.right{
                         None => {
-                            self.stack.push((NodeStatus::Completed, node));
+                            self.stack.push((Address::Completed, node));
                         },
                         Some(ref right) => {
-                            self.stack.push((NodeStatus::Completed, node));
-                            self.stack.push((NodeStatus::Enter, right));
+                            self.stack.push((Address::Completed, node));
+                            self.stack.push((Address::Enter, right));
                         }
                     }
                 },
-                NodeStatus::Completed => {
+                Address::Completed => {
                 },
             }
         }

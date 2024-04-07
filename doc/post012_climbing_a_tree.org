@@ -5,7 +5,8 @@
 #+TAGS: Emacs, Lisp
 #+DESCRIPTION:
 #+TITLE: Climbing a (binary) Tree
-In this post I will create a
+In this post I will show how to transform a recursive depth first traversal
+function into an iterator for a binary tree
 
 After a couple of digressions we're back to my beloved tree
 
@@ -13,7 +14,7 @@ While in previous posts we traversed and print the content of the tree data
 structure with a recursive function, this may not be very convenient in the
 general case: what can we do to make it more general?
 
-1. add a lambda argument into the traversal function
+1. pass a lambda argument to the recursive traversal function
 2. transform the traversal function into an iterator coroutine
 
 The second approach leverage the whole Rust iterator interface, providing an
@@ -22,6 +23,95 @@ easy connection with other data structures.
 * Fixing our tree
 Let's first recall our previous implementation with some small fixes:
 first is to have a public tree interface which clearly separates from nodes
+
+#+begin_src rust
+use std::fmt::Debug;
+
+#[derive(Debug)]
+pub struct Node<T>{
+    value : T,
+    left : Option<Box<Node<T>>>,
+    right : Option<Box<Node<T>>>
+}
+
+impl<T> Node<T>{
+    fn new(value : T) -> Node<T>{
+        Node{
+            value,
+            left : None,
+            right : None
+        }
+    }
+}
+
+#[derive(Debug,Default)]
+pub struct Tree<T>{
+    root: Option<Box<Node<T>>>
+}
+
+impl<T> Tree<T>{
+    fn new() -> Tree<T>{
+        Tree{
+            root : None
+        }
+    }
+}
+#+end_src
+
+the second fix is quite unnecessary but remove some boilerplate code when
+creating a node
+
+#+begin_src rust
+impl<T> From<Node<T>> for Option<Box<Node<T>>>{
+    fn from(value: Node<T>) -> Self {
+        Some(Box::new(value))
+    }
+}
+#+end_src
+
+finally let's copy our simple implementation of the sorting insertion limited to
+those values which implement a total order trait
+
+#+begin_src rust
+impl<T : Ord> Tree<T>{
+
+    fn insert(& mut self, value : T ) {
+        match self.root{
+            None => {
+                self.root = Node::new(value).into();
+            }
+            Some(ref mut node) => {
+                Tree::<T>::insert_recursive(node, value);
+            }
+        }
+    }
+
+    fn insert_recursive(node : & mut Node<T>, value : T){
+        if value > node.value{
+            match node.right{
+                None => {
+                    node.right = Node::new(value).into();
+                }
+                Some(ref mut n) => {
+                    Tree::<T>::insert_recursive(n, value);
+                }
+            }
+        }else if value < node.value{
+            match node.left{
+                None => {
+                    node.left = Node::new(value).into();
+                }
+                Some(ref mut n) => {
+                    Tree::<T>::insert_recursive(n, value);
+                }
+            }
+        }
+    }
+}
+
+#+end_src
+
+Now we're ready to start the journey.
 * Iterable and iterators
 A data structure is *iterable* when you can get a suitable *iterator* from it;
 this object may be different from the source data structure, as each iterator
@@ -117,22 +207,39 @@ bindings and the return address
     4. case D // completed
       1. no op
 
-This may sound quite /redundant/ but please bear with me as clarity is more important now than optimizations we can add later
+This may sound quite /redundant/ but please bear with me as clarity is more
+important now than optimizations we can add later
 
-The more important point we did here is to transform address jump into an enumeration of states, which can then be used when creating an iterator coroutine; the magic step here is to return the value instead of printing it
+* Implementing the coroutine object
+The more important point we did here is to transform address jump into an
+enumeration of states, which can then be used when creating an iterator
+coroutine; the magic step here is composed of two ideas:
+1. to mess up the execution stack changing the return address
+2. to return the value instead of printing it
+
+First let's create an enum representing our return addresses
 #+begin_src rust
 #[derive(Debug, Copy, Clone)]
-enum NodeStatus{
+enum Address{
     Enter,
     LeftCompleted,
     ValueYield,
     Completed
 }
+#+end_src
 
+Then we need to host our stack reification into our main coroutine object, each
+stack frame will contain the return address and our variable environment which
+luckily is composed of just one variable: the current node.
+#+begin_src rust
 pub struct TreeIter<'a, T> {
-    stack : Vec<(NodeStatus, & 'a Node<T>)>
+    stack : Vec<(Address, & 'a Node<T>)>
 }
+#+end_src
 
+in our implementation let's first have a creator that initialize the stack if
+any root node is available
+#+begin_src rust
 impl<'a, T> TreeIter<'a, T>{
     // this creator initialize the stack
     // with the root element if it exists
@@ -145,51 +252,59 @@ impl<'a, T> TreeIter<'a, T>{
             }
             Some(ref node) => {
                 TreeIter{
-                    stack: vec![(NodeStatus::Enter, & node)]
+                    stack: vec![(Address::Enter, & node)]
                 }
             }
         }
     }
+}
+#+end_src
+
+then we can add the method implementing the coroutine call
+#+begin_src rust
+impl<'a, T> TreeIter<'a, T>{
+
+    // here I cut the creator
 
     fn next_item(& mut self) -> Option<& 'a T>{
         while let Some((address,node)) = self.stack.pop(){
             match address {
-                NodeStatus::Enter => {
+                Address::Enter => {
                     match node.left{
                         None => {
                             // if no left node jumps to yield stage
-                            self.stack.push((NodeStatus::LeftCompleted, node));
+                            self.stack.push((Address::LeftCompleted, node));
                         },
                         Some(ref left) => {
                             // otherwise set the return address to yield stage
                             // and call recursively
-                            self.stack.push((NodeStatus::LeftCompleted, node));
-                            self.stack.push((NodeStatus::Enter, left));
+                            self.stack.push((Address::LeftCompleted, node));
+                            self.stack.push((Address::Enter, left));
                         }
                     }
                 },
-                NodeStatus::LeftCompleted => {
+                Address::LeftCompleted => {
                     // the coroutine step
                     // set the return address to the next sttep and
                     // yield the value
-                    self.stack.push((NodeStatus::ValueYield, node));
+                    self.stack.push((Address::ValueYield, node));
                     return Some(& node.value);
                 },
-                NodeStatus::ValueYield => {
+                Address::ValueYield => {
                     match node.right{
                         None => {
                             // jump to to end of function
-                            self.stack.push((NodeStatus::Completed, node));
+                            self.stack.push((Address::Completed, node));
                         },
                         Some(ref right) => {
                             // set the reurn address to end of function
                             // recursive call on the right node
-                            self.stack.push((NodeStatus::Completed, node));
-                            self.stack.push((NodeStatus::Enter, right));
+                            self.stack.push((Address::Completed, node));
+                            self.stack.push((Address::Enter, right));
                         }
                     }
                 },
-                NodeStatus::Completed => {
+                Address::Completed => {
                     // ok this is just an address
                 },
             }
@@ -198,7 +313,7 @@ impl<'a, T> TreeIter<'a, T>{
     }
 }
 #+end_src
-* Wrapping up
+* Wrapping up traits
 Now we can return to implement the ~IntoIter~ and ~Iterator~ traits for our
 tree:
 
@@ -220,7 +335,10 @@ impl<'a , T> IntoIterator for & 'a Tree<T>{
 
 #+end_src
 
-and we can also test it
+and we can also test it; here are a couple of details:
+- iterators allow us to use ~map~ and ~collect~
+- as returned values are of type ~& i64~ we need to clone their value to easily
+  make the test
 #+begin_src rust
 #[cfg(test)]
 mod tests {
