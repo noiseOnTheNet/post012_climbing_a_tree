@@ -5,49 +5,254 @@
 #+TAGS: Emacs, Lisp
 #+DESCRIPTION:
 #+TITLE: Climbing a (binary) Tree
-* Iterable and iterators
-* The state machine and the stack
+In this post I will create a
 
-#+begin_src dot :file images/post012_climbing_state.png
-digraph {
-    subgraph {
-        start [label = "start", shape="oval"];
-        running [label = "running", shape="box"];
-        suspended [label = "suspended", shape="box"];
-        stop [label = "stop", shape="oval"];
-        start -> running [label = "next"]
-        running -> suspended [label = "yield"]
-        suspended -> running [label = "next"]
-        running -> stop [label = "yield end"]
-        {rank = same; running; suspended;}
+After a couple of digressions we're back to my beloved tree
+
+While in previous posts we traversed and print the content of the tree data
+structure with a recursive function, this may not be very convenient in the
+general case: what can we do to make it more general?
+
+1. add a lambda argument into the traversal function
+2. transform the traversal function into an iterator coroutine
+
+The second approach leverage the whole Rust iterator interface, providing an
+easy connection with other data structures.
+
+* Fixing our tree
+Let's first recall our previous implementation with some small fixes:
+first is to have a public tree interface which clearly separates from nodes
+* Iterable and iterators
+A data structure is *iterable* when you can get a suitable *iterator* from it;
+this object may be different from the source data structure, as each iterator
+must keep an internal status.
+
+Iterators have a wealth of useful methods, like ~map~ or ~filter~ which allow to
+easily create lazy pipelines. If you need you can directly use them in a ~for~ loop.
+
+I personally do not like iterators which allow mutations to the source data
+structure while looping, so I won't focus on this subject in this post.
+
+In Rust a struct is iterable if it implements the ~IntoIter~ trait which defines
+the ~into_iter~ method, returning an iterator.
+
+Iterators are structs which implement the ~Iterator~ trait which defines the
+~next~ method. At each call the ~next~ method returns either ~Some(value)~ or
+~None~ if the iterator exhausted its sequence of values or nor respectively.
+
+So let's create some stub for our goal with a couple of caveats:
+1. we want to have a generic content type ~T~ in our tree which may possibly
+   have no restriction, so instead of returning it by value we may want to
+   return it as a borrowed reference ~& T~
+2. the lifetime of these reference must be the same of the tree so if the
+   returned type has lifetime ~'a~ also the iterator should be have at least the
+   same lifetime
+#+begin_src rust
+pub struct TreeIter{
+    // we have to figure out what to put here
+}
+
+impl<'a, T> Iterator for TreeIter<'a, T>{
+    // this is the type signature of what we are returning
+    type Item = & 'a T;
+    fn next(&mut self) -> Option<Self::Item> {
+        // what do we put here?
+    }
+}
+
+impl<'a , T> IntoIterator for & 'a Tree<T>{
+    // this is the type signature of what we are returning
+     type Item = & 'a T;
+    // this is the type signature of the iterator
+     type IntoIter = TreeIter<'a, T>;
+     fn into_iter(self) -> Self::IntoIter {
+         // here we create the iterator from a Tree reference
+     }
+}
+#+end_src
+* Transform recursive into iterative
+Ok, this is going to be quite complex.
+
+In order to understand this transformation I will first write a pseudo-assembler
+sequence showing how a compiler could transform the recursive call of our
+traversal function
+
+1. Set node with input variable
+2. If node.left null jump to 7
+3. Push stack frame
+4. Set return address to 7
+5. Set input variable to node.left
+6. Jump to 1
+7. Print node.value
+8. If node.right null jump to 13
+9. Push stack frame
+10. Set return address to 13
+11. Set input to node.right
+12. Jump to 1.
+13. Pop stack frame
+14. Jump to return address
+
+Then I will create an iteration which performs an equivalent algorithm: instead
+of the application stack I need a real stack where I push all the variable
+bindings and the return address
+
+1. While the stack is not empty
+  1. pop address, node
+  2. match address
+    1. case A // enter node
+      1. if node.left Some(left)
+        1. push B, node
+        2. push A, left
+      2. else
+      2.1. push B, node
+    2. case B // left explored
+      1. print node.value
+      2. push C, node
+    3. case C // yielded node
+      1. if node.right Some(right)
+        1. push D, node
+        2. push A, right
+      2. else
+        1. push D, node
+    4. case D // completed
+      1. no op
+
+This may sound quite /redundant/ but please bear with me as clarity is more important now than optimizations we can add later
+
+The more important point we did here is to transform address jump into an enumeration of states, which can then be used when creating an iterator coroutine; the magic step here is to return the value instead of printing it
+#+begin_src rust
+#[derive(Debug, Copy, Clone)]
+enum NodeStatus{
+    Enter,
+    LeftCompleted,
+    ValueYield,
+    Completed
+}
+
+pub struct TreeIter<'a, T> {
+    stack : Vec<(NodeStatus, & 'a Node<T>)>
+}
+
+impl<'a, T> TreeIter<'a, T>{
+    // this creator initialize the stack
+    // with the root element if it exists
+    fn new(tree : & 'a Tree<T>) -> TreeIter<'a, T>{
+        match tree.root {
+            None => {
+                TreeIter{
+                    stack : Vec::new()
+                }
+            }
+            Some(ref node) => {
+                TreeIter{
+                    stack: vec![(NodeStatus::Enter, & node)]
+                }
+            }
+        }
+    }
+
+    fn next_item(& mut self) -> Option<& 'a T>{
+        while let Some((address,node)) = self.stack.pop(){
+            match address {
+                NodeStatus::Enter => {
+                    match node.left{
+                        None => {
+                            // if no left node jumps to yield stage
+                            self.stack.push((NodeStatus::LeftCompleted, node));
+                        },
+                        Some(ref left) => {
+                            // otherwise set the return address to yield stage
+                            // and call recursively
+                            self.stack.push((NodeStatus::LeftCompleted, node));
+                            self.stack.push((NodeStatus::Enter, left));
+                        }
+                    }
+                },
+                NodeStatus::LeftCompleted => {
+                    // the coroutine step
+                    // set the return address to the next sttep and
+                    // yield the value
+                    self.stack.push((NodeStatus::ValueYield, node));
+                    return Some(& node.value);
+                },
+                NodeStatus::ValueYield => {
+                    match node.right{
+                        None => {
+                            // jump to to end of function
+                            self.stack.push((NodeStatus::Completed, node));
+                        },
+                        Some(ref right) => {
+                            // set the reurn address to end of function
+                            // recursive call on the right node
+                            self.stack.push((NodeStatus::Completed, node));
+                            self.stack.push((NodeStatus::Enter, right));
+                        }
+                    }
+                },
+                NodeStatus::Completed => {
+                    // ok this is just an address
+                },
+            }
+        }
+        None
+    }
+}
+#+end_src
+* Wrapping up
+Now we can return to implement the ~IntoIter~ and ~Iterator~ traits for our
+tree:
+
+#+begin_src rust
+impl<'a, T> Iterator for TreeIter<'a, T>{
+    type Item = & 'a T;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_item()
+    }
+}
+
+impl<'a , T> IntoIterator for & 'a Tree<T>{
+     type Item = & 'a T;
+     type IntoIter = TreeIter<'a, T>;
+     fn into_iter(self) -> Self::IntoIter {
+         TreeIter::new(self)
+     }
+}
+
+#+end_src
+
+and we can also test it
+#+begin_src rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_a_root_node() {
+        let mut tree : Tree<i64>= Tree::new();
+        tree.insert(8);
+        tree.insert(10);
+        tree.insert(4);
+        tree.insert(6);
+        tree.insert(5);
+        println!("{:?}",tree);
+        let result : Vec<i64> = tree.into_iter()
+            .map(|x| (*x).clone()).
+            .collect();
+        assert_eq!(result,vec![4,5,6,8,10]);
     }
 }
 #+end_src
 
-#+RESULTS:
-[[file:images/post012_climbing_state.png]]
+* A note about this post and related subjects
+When I started my Rust exploration the binary tree was my first experiment.
 
-1. each time I enter a node
-   - I check the left node exists
-   - if exists i push a LEFT in the stack and I enter left node (go back to 1)
-2. I yield my value
-3. I check the right node exists
-   - if it exists I push a RIGHT to the stack I enter right node (go back to 1)
-4. if the stack is not empty pop the stack and exit the node
-   - otherwise yield the end of the stream
+I soon realized that the subject involved a deep understanding of Rust borrowing
+rules and that missing coroutines was going to make a depth first iterator a
+major task, so a single post idea quickly grow up to multiple posts.
 
-Each yield require a state save so when the next method is called it can be resumed
-* The smallest stack
+While working on this solution I learned a lot and tried to create the simplest
+possible code. At a certain point in time I tought to create a double linked
+tree using ~Rc~ and ~Weak~ reference and found a great book on the subject.
 
-| stack operation | binary operation     | before | after | phase          |
-|-----------------+----------------------+--------+-------+----------------|
-|                 |                      | 0b00   | 0b01  | init           |
-|-----------------+----------------------+--------+-------+----------------|
-| push LEFT       | shift left           | 0b01   | 0b10  | process node B |
-| pop             | shift right          | 0b10   | 0b01  | back to node A |
-|-----------------+----------------------+--------+-------+----------------|
-| push RIGHT      | shift left and add 1 | 0b01   | 0b11  | process node C |
-| pop             | shift right          | 0b11   | 0b01  | back to node A |
-|-----------------+----------------------+--------+-------+----------------|
-| pop             | shift right          | 0b01   | 0b00  | exit           |
-* Into Iter
+Luckily I was able to use just ~Box~ and ~Vec~ to complete an acceptable
+iterator so I completely dropped doubly linked trees
