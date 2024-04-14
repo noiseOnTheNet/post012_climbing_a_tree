@@ -1,3 +1,5 @@
+#+BLOG: noise on the net
+#+POSTID: 410
 #+ORG2BLOG:
 #+DATE: [2024-04-14 dom 22:19]
 #+OPTIONS: toc:nil num:nil todo:nil pri:nil tags:nil ^:nil
@@ -157,7 +159,7 @@ pub struct TreeIter{
 impl<'a, T> Iterator for TreeIter<'a, T>{
     // this is the type signature of what we are returning
     type Item = & 'a T;
-    fn next(&mut self) -> Option<Self::Item> {
+    fn next(& mut self) -> Option<Self::Item> {
         // what do we put here?
     }
 }
@@ -332,7 +334,7 @@ tree:
 #+begin_src rust
 impl<'a, T> Iterator for TreeIter<'a, T>{
     type Item = & 'a T;
-    fn next(&mut self) -> Option<Self::Item> {
+    fn next(& mut self) -> Option<Self::Item> {
         self.next_item()
     }
 }
