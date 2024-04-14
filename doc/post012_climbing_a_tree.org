@@ -1,14 +1,26 @@
 #+ORG2BLOG:
-#+DATE: [2024-03-18 lun 22:19]
+#+DATE: [2024-04-14 dom 22:19]
 #+OPTIONS: toc:nil num:nil todo:nil pri:nil tags:nil ^:nil
-#+CATEGORY: Org2Blog, WordPress
-#+TAGS: Emacs, Lisp
+#+CATEGORY: Language learning
+#+TAGS: Rust
 #+DESCRIPTION:
 #+TITLE: Climbing a (binary) Tree
+file:./images/annie-spratt-gNI4_88t9Rs-unsplash_reduced.jpg
+
+Photo by [[https://unsplash.com/@anniespratt?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash][Annie Spratt]] on [[https://unsplash.com/photos/girl-sitting-on-tree-branch-during-daytime-gNI4_88t9Rs?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash][Unsplash]]
+
+
 In this post I will show how to transform a recursive depth first traversal
 function into an iterator for a binary tree
 
-After a couple of digressions we're back to my beloved tree
+The complete source code for this post is available [[https://github.com/noiseOnTheNet/post012_climbing_a_tree][here]].
+
+After a couple of digressions we're back to my beloved tree; here are the link
+of our journey so far:
+1. [[https://noiseonthenet.space/noise/2024/03/growing-a-binary-tree-in-rust/][Growing a (binary)Tree]]
+2. [[https://noiseonthenet.space/noise/2024/03/growing-a-sorting-tree/][Growing a (sorting) Tree]]
+3. [[https://noiseonthenet.space/noise/2024/03/stacking-bits/][Stacking Bits]]
+4. [[https://noiseonthenet.space/noise/2024/03/prime-time/][Prime Time]]
 
 While in previous posts we traversed and print the content of the tree data
 structure with a recursive function, this may not be very convenient in the
@@ -374,3 +386,5 @@ tree using ~Rc~ and ~Weak~ reference and found a great book on the subject.
 
 Luckily I was able to use just ~Box~ and ~Vec~ to complete an acceptable
 iterator so I completely dropped doubly linked trees
+
+# ./images/annie-spratt-gNI4_88t9Rs-unsplash_reduced.jpg https://noiseonthenet.space/noise/wp-content/uploads/2024/04/annie-spratt-gNI4_88t9Rs-unsplash_reduced.jpg
