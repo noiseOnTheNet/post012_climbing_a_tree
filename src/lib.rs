@@ -151,43 +151,6 @@ impl<'a , T> IntoIterator for & 'a Tree<T>{
      }
 }
 
-pub struct Stack1 {
-    stack: usize
-}
-
-impl Stack1 {
-    pub fn new() -> Stack1 {
-        Stack1 { stack: 1 }
-    }
-
-    pub fn push(& mut self, value: bool) -> Result<bool, String>{
-        self.stack = self.stack << 1;
-        if value{
-            self.stack += 1;
-        }
-        Ok(value)
-    }
-
-    pub fn top(& self) -> Result<bool, String> {
-        if self.stack == 1 {
-            return Err("Empty stack".into())
-        }
-        Ok((self.stack & 1) == 1)
-    }
-
-    pub fn pop(& mut self) -> Result<bool, String> {
-        if self.stack == 1 {
-            return Err("Empty stack".into())
-        }
-        let result = (self.stack & 1) == 1;
-        self.stack = self.stack >> 1;
-        Ok(result)
-    }
-
-    pub fn size(& self) -> u32 {
-        usize::BITS - usize::leading_zeros(self.stack) - 1
-    }
-}
 
 #[cfg(test)]
 mod tests {
