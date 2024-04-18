@@ -384,7 +384,7 @@ major task, so a single post idea quickly grow up to multiple posts.
 
 While working on this solution I learned a lot and tried to create the simplest
 possible code. At a certain point in time I tought to create a double linked
-tree using ~Rc~ and ~Weak~ reference and found a great book on the subject.
+tree using ~Rc~ and ~Weak~ reference and found a [[https://rust-unofficial.github.io/too-many-lists/][great book]] on the subject.
 
 Luckily I was able to use just ~Box~ and ~Vec~ to complete an acceptable
 iterator so I completely dropped doubly linked trees
